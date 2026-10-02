@@ -3,23 +3,73 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>MyProject — Mini Blender</title>
+<title>Mini Blender Ultra 🚀</title>
 <link rel="stylesheet" href="style.css">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 </head>
 <body>
-<header id="top"><b id="logo">◈ Mini Blender</b><nav id="menus"></nav><span id="ptitle"></span><button id="ptog" aria-label="Panels">☰</button></header>
-<aside id="tools"></aside>
-<main id="vp"><div id="pv"><span>Camera</span></div><div id="hint">G Move · R Rotate · S Scale · F Focus</div></main>
-<aside id="side"><section id="outl"></section><section id="props"></section></aside>
+<header id="top">
+  <b id="logo">◈ Mini Blender Ultra</b>
+  <nav id="menus"></nav>
+  <button id="btn-help" class="pri" title="Help / Fitur">❓ Bantuan</button>
+  <button id="ptog" aria-label="Panels">☰</button>
+</header>
+<aside id="tools">
+  <button data-m="translate" title="Move (G)">Move</button>
+  <button data-m="rotate" title="Rotate (R)">Rot</button>
+  <button data-m="scale" title="Scale (S)">Scl</button>
+  <hr>
+  <button id="t-clone" class="on" title="Clone Objek (Shift+D)">⧉ Clone</button>
+  <button id="t-del" title="Delete Objek (Del)">🗑️ Hapus</button>
+</aside>
+<main id="vp">
+  <div id="pv"><span>Kamera</span></div>
+  <div id="hint">G Geser · R Putar · S Skala · F Fokus · Shift+D Clone</div>
+</main>
+<aside id="side">
+  <section id="outl"></section>
+  <section id="props"></section>
+</aside>
 <footer id="tl">
-  <div class="bar"><button data-t="key">◆ Key</button><button data-t="play">▶</button><button data-t="pause">❚❚</button><button data-t="stop">■</button><span id="tt">0.00s</span><label>Length <input id="dur" type="number" min="1" max="60" value="5"></label></div>
+  <div class="bar">
+    <button id="btn-key" class="pri">◆ Keyframe</button>
+    <button id="btn-play">▶ Play</button>
+    <button id="btn-pause">❚❚ Pause</button>
+    <button id="btn-stop">■ Stop</button>
+    <span id="tt">0.00s</span>
+    <label>Durasi <input id="dur" type="number" min="1" max="60" value="5">s</label>
+  </div>
   <div class="trk"><div id="kfs"></div><input id="tr" type="range" min="0" max="5" step="0.01" value="0"></div>
 </footer>
-<div id="stat"><i id="dot"></i><span id="st">New Project</span><span id="info"></span></div>
+<div id="stat"><i id="dot"></i><span id="st">Proyek Baru</span><span id="info">60 FPS</span></div>
 <div id="toasts"></div>
-<div id="modal"><div class="box"><p id="mm"></p><input id="mi"><div id="mb"></div></div></div>
-<input type="file" id="file" hidden>
+
+<!-- Modal Help -->
+<div id="modal" hidden>
+  <div class="box" style="width: min(600px, 95vw);">
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #444;padding-bottom:10px;">
+      <h2 id="mt" style="color:#e87d0d;margin:0;">Panduan & 20+ Fitur Baru</h2>
+      <button id="mx" style="background:#e5555d;color:white;font-weight:bold;">Tutup ❌</button>
+    </div>
+    <div id="mb" style="margin-top:15px; max-height: 65vh; overflow-y: auto; color:#d5d8de; font-size: 13px; line-height: 1.6;"></div>
+  </div>
+</div>
+
+<!-- Mode Kamera Fullscreen Overlay -->
+<div id="cam-ui" class="hidden">
+  <div id="cam-top">
+    <span id="cam-rec">● REC</span>
+    <button id="cam-close">❌ Keluar Mode Kamera</button>
+  </div>
+  <div id="cam-controls">
+     <button id="cam-c-play">▶ Play</button>
+     <button id="cam-c-pause">❚❚ Pause</button>
+     <button id="cam-c-stop">■ Stop</button>
+  </div>
+</div>
+
+<input type="file" id="file" accept=".json" hidden>
+<input type="file" id="tex-in" accept="image/png, image/jpeg" hidden>
 <script type="module" src="script.js"></script>
 </body>
 </html>
