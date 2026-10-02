@@ -1,14 +1,263 @@
-import * as T from 'three';import{OrbitControls}from'three/addons/controls/OrbitControls.js';import{TransformControls}from'three/addons/controls/TransformControls.js';import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';import{GLTFExporter}from'three/addons/exporters/GLTFExporter.js';import{OBJLoader}from'three/addons/loaders/OBJLoader.js';import{OBJExporter}from'three/addons/exporters/OBJExporter.js';
-const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],view=$('#view');let R=new T.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});R.setPixelRatio(Math.min(devicePixelRatio,2));R.shadowMap.enabled=true;R.shadowMap.type=T.PCFSoftShadowMap;R.toneMapping=T.ACESFilmicToneMapping;R.outputColorSpace=T.SRGBColorSpace;view.append(R.domElement);const scene=new T.Scene(),root=new T.Group(),aux=new T.Group();scene.add(root,aux);scene.background=new T.Color('#25272b');let cam=new T.PerspectiveCamera(50,1,.05,1000);cam.position.set(6,4.5,8);let orbit=new OrbitControls(cam,R.domElement);orbit.enableDamping=true;orbit.dampingFactor=.075;orbit.target.set(0,.5,0);let tc=new TransformControls(cam,R.domElement);tc.setSize(innerWidth<850?1.35:1);scene.add(tc);let grid=new T.GridHelper(40,40,0x4a4d55,0x30323a),ax=new T.AxesHelper(5);aux.add(grid,ax);let box=new T.BoxHelper(new T.Object3D(),0xe87d0d);box.visible=false;box.material.depthTest=false;aux.add(box);let S=null,snap=false,wire=false,play=false,time=0,anim={duration:5,keys:{}},hist=[],hi=-1,dirty=false,camR=null,camMode=false,fx=[];
-const geo={Cube:()=>new T.BoxGeometry(1,1,1),Sphere:()=>new T.SphereGeometry(.65,40,28),Cylinder:()=>new T.CylinderGeometry(.55,.55,1.2,40),Cone:()=>new T.ConeGeometry(.65,1.25,40),Plane:()=>new T.PlaneGeometry(2,2),Torus:()=>new T.TorusGeometry(.62,.2,24,56)};const mat=()=>new T.MeshStandardMaterial({color:'#b9bdc7',metalness:.12,roughness:.5});function uniq(n){let x=n,i=1;while(root.children.some(o=>o.name===x))x=n+'.'+String(i++).padStart(3,'0');return x}function dispose(o){o.traverse(c=>{c.geometry?.dispose();if(c.material){for(let m of(Array.isArray(c.material)?c.material:[c.material])){m.map?.dispose();m.dispose()}}})}function toast(x,c=''){let d=document.createElement('div');d.className='toast '+c;d.textContent=x;$('#toast').append(d);setTimeout(()=>d.remove(),2300)}function dirtyMark(){dirty=true;status()}function status(){$('#status').textContent=dirty?'Unsaved Changes':'Ready';$('#title').textContent='MyProject'+(dirty?' ●':'');$('#stats').textContent=root.children.length+' objects'}function snap(){return JSON.stringify({scene:root.toJSON(),anim,bg:'#'+scene.background.getHexString(),cam:{p:cam.position.toArray(),t:orbit.target.toArray()}})}function commit(){let x=snap();hist=hist.slice(0,hi+1);if(hist[hi]!==x)hist.push(x);if(hist.length>60)hist.shift();hi=hist.length-1;dirty=false;status()}function restore(x){let j=JSON.parse(x),g=new T.ObjectLoader().parse(j.scene);root.clear();g.children.forEach(o=>root.add(o));anim=j.anim||{duration:5,keys:{}};scene.background.set(j.bg||'#25272b');if(j.cam){cam.position.fromArray(j.cam.p);orbit.target.fromArray(j.cam.t)}S=null;helpers();renderOut();props();commit()}function undo(){if(hi>0){hi--;restore(hist[hi]);toast('Undo')}}function redo(){if(hi<hist.length-1){hi++;restore(hist[hi]);toast('Redo')}}
-function mesh(n){let o=new T.Mesh(geo[n](),mat());o.name=uniq(n);o.castShadow=o.receiveShadow=true;if(n==='Plane')o.rotation.x=-Math.PI/2;else o.position.y=.65;return o}function light(n='Point'){let o=n==='Ambient'?new T.AmbientLight('#fff',.45):n==='Directional'?new T.DirectionalLight('#fff',2.2):new T.PointLight('#ffd3a0',35,0,2);o.name=uniq(n+' Light');if(n==='Directional'){o.position.set(5,8,4);o.castShadow=true;o.shadow.mapSize.set(1024,1024)}else if(n==='Point')o.position.set(-4,3,3);return o}function camera(){let o=new T.PerspectiveCamera(45,16/9,.05,1000);o.name=uniq('Camera');o.position.copy(cam.position);o.quaternion.copy(cam.quaternion);o.userData.active=!root.children.some(x=>x.isCamera&&x.userData.active);return o}function select(o){S=o||null;if(S&&S.visible)tc.attach(S);else tc.detach();box.visible=!!S;$('#sel').textContent=S?S.name:'Nothing selected';renderOut();props()}function add(o){root.add(o);helpers();select(o);commit();burst(o.position);toast(o.name+' added')}function clone(){if(!S)return toast('Select an object first','warn');let c=S.clone(true);c.name=uniq(S.name+' Clone');c.position.add(new T.Vector3(.75,.15,.75));c.traverse(x=>{if(x.isMesh){x.geometry=x.geometry.clone();x.material=Array.isArray(x.material)?x.material.map(m=>m.clone()):x.material.clone()}});if(anim.keys[S.uuid])anim.keys[c.uuid]=JSON.parse(JSON.stringify(anim.keys[S.uuid]));root.add(c);helpers();select(c);commit();burst(c.position);toast('Object cloned')}function del(){if(!S)return toast('Nothing selected','warn');root.remove(S);delete anim.keys[S.uuid];dispose(S);S=null;helpers();props();commit();toast('Object deleted')}
-tc.addEventListener('dragging-changed',e=>orbit.enabled=!e.value);tc.addEventListener('objectChange',()=>{dirtyMark();props()});$$('[data-m]').forEach(b=>b.onclick=()=>{tc.setMode(b.dataset.m);$$('[data-m]').forEach(x=>x.classList.remove('active'));b.classList.add('active')});$('#clone').onclick=$('#clone2').onclick=clone;$('#del').onclick=del;$('#undo').onclick=undo;$('#redo').onclick=redo;$('#focus').onclick=()=>{if(!S)return;let b=new T.Box3().setFromObject(S),c=b.getCenter(new T.Vector3()),r=Math.max(b.getSize(new T.Vector3()).length(),1),from=cam.position.clone(),tar=orbit.target.clone(),to=c.clone().add(from.clone().sub(tar).normalize().multiplyScalar(r*1.8)),t=performance.now(),f=()=>{let p=Math.min((performance.now()-t)/450,1);p=1-(1-p)**3;cam.position.lerpVectors(from,to,p);orbit.target.lerpVectors(tar,c,p);p<1&&requestAnimationFrame(f)};f()};$('#grid').onclick=()=>{grid.visible=!grid.visible;ax.visible=grid.visible};$('#snap').onclick=()=>{snap=!snap;tc.setTranslationSnap(snap?.25:null);tc.setRotationSnap(snap?T.MathUtils.degToRad(15):null);tc.setScaleSnap(snap?.1:null);toast(snap?'Snap on':'Snap off')};$('#wire').onclick=()=>{wire=!wire;root.traverse(o=>{if(o.isMesh)o.material.wireframe=wire})};$('#cube').onclick=()=>add(mesh('Cube'));$('#sphere').onclick=()=>add(mesh('Sphere'));$('#light').onclick=()=>add(light());$('#camadd').onclick=()=>add(camera());$('#panels').onclick=()=>document.body.classList.toggle('openPanels');
-function helpers(){aux.children.filter(x=>x!==grid&&x!==ax&&x!==box).forEach(x=>{aux.remove(x);x.dispose?.()});root.children.forEach(o=>{let h=o.isDirectionalLight?new T.DirectionalLightHelper(o,1):o.isPointLight?new T.PointLightHelper(o,.25):o.isCamera?new T.CameraHelper(o):null;if(h)aux.add(h)});renderOut()}function renderOut(){let x=$('#outliner');x.replaceChildren();root.children.forEach(o=>{let r=document.createElement('div');r.className='row'+(o===S?' on':'');r.innerHTML=`<span>${o.isCamera?'▷':o.isLight?'✦':'■'}</span><b></b>`;r.querySelector('b').textContent=o.name;let v=document.createElement('button');v.textContent=o.visible?'◉':'◌';v.onclick=e=>{e.stopPropagation();o.visible=!o.visible;renderOut();dirtyMark()};let c=document.createElement('button');c.textContent='⧉';c.onclick=e=>{e.stopPropagation();select(o);clone()};let d=document.createElement('button');d.textContent='×';d.onclick=e=>{e.stopPropagation();select(o);del()};r.append(v,c,d);r.onclick=()=>select(o);x.append(r)};$('#count').textContent=root.children.length}function props(){let p=$('#props');p.replaceChildren();if(!S){p.innerHTML='<div class="empty">Select an object to edit transform, material, camera and animation.</div>';return}let w=document.createElement('div');w.innerHTML=`<b>${S.name}</b><div class="section">TRANSFORM</div><div class="g3"><label>X<input data-k="px" type="number" step=".01" value="${S.position.x}"></label><label>Y<input data-k="py" type="number" step=".01" value="${S.position.y}"></label><label>Z<input data-k="pz" type="number" step=".01" value="${S.position.z}"></label></div><div class="g3"><label>RX<input data-k="rx" type="number" value="${T.MathUtils.radToDeg(S.rotation.x)}"></label><label>RY<input data-k="ry" type="number" value="${T.MathUtils.radToDeg(S.rotation.y)}"></label><label>RZ<input data-k="rz" type="number" value="${T.MathUtils.radToDeg(S.rotation.z)}"></label></div><div class="g3"><label>SX<input data-k="sx" type="number" step=".01" value="${S.scale.x}"></label><label>SY<input data-k="sy" type="number" step=".01" value="${S.scale.y}"></label><label>SZ<input data-k="sz" type="number" step=".01" value="${S.scale.z}"></label></div>`;if(S.isMesh)w.innerHTML+=`<div class="section">MATERIAL</div><div class="line">Color <input data-k="color" type="color" value="#${S.material.color.getHexString()}"></div><div class="line">Metal <input data-k="metal" type="range" min="0" max="1" step=".01" value="${S.material.metalness}"></div><div class="line">Rough <input data-k="rough" type="range" min="0" max="1" step=".01" value="${S.material.roughness}"></div><div class="propBtns"><button id="tex">PNG Texture</button><button id="rmtex">Remove PNG</button></div>`;if(S.isLight)w.innerHTML+=`<div class="section">LIGHT</div><div class="line">Intensity <input data-k="int" type="range" min="0" max="15" step=".05" value="${S.intensity}"></div>`;if(S.isCamera)w.innerHTML+=`<div class="section">CAMERA</div><div class="line">FOV <input data-k="fov" type="range" min="15" max="120" value="${S.fov}"></div><div class="propBtns"><button id="active">Set Active</button><button id="viewcam">Camera View</button></div>`;w.innerHTML+=`<div class="propBtns"><button id="pclone">⧉ Clone</button><button id="pdel">× Delete</button></div>`;p.append(w);p.querySelectorAll('input').forEach(i=>i.oninput=()=>apply(i));$('#pclone').onclick=clone;$('#pdel').onclick=del;$('#tex')?.addEventListener('click',()=>$('#png').click());$('#rmtex')?.addEventListener('click',()=>{if(S.material.map){S.material.map.dispose();S.material.map=null;S.material.needsUpdate=true;commit()}});$('#active')?.addEventListener('click',()=>{root.children.forEach(o=>{if(o.isCamera)o.userData.active=false});S.userData.active=true;commit();toast('Active camera set')});$('#viewcam')?.addEventListener('click',enterCamera)}function apply(i){let k=i.dataset.k,v=+i.value;if(k[0]==='p')S.position.setComponent({px:0,py:1,pz:2}[k],v);else if(k[0]==='r')S.rotation.setComponent({rx:0,ry:1,rz:2}[k],T.MathUtils.degToRad(v));else if(k[0]==='s')S.scale.setComponent({sx:0,sy:1,sz:2}[k],v);else if(k==='color')S.material.color.set(i.value);else if(k==='metal')S.material.metalness=v;else if(k==='rough')S.material.roughness=v;else if(k==='int')S.intensity=v;else if(k==='fov'){S.fov=v;S.updateProjectionMatrix()}dirtyMark();helpers()}
-$('#png').onchange=e=>{let f=e.target.files[0];e.target.value='';if(!f||!S?.isMesh)return;new T.TextureLoader().load(URL.createObjectURL(f),t=>{t.colorSpace=T.SRGBColorSpace;S.material.map=t;S.material.needsUpdate=true;commit();toast('PNG applied')})};
-function active(){return root.children.find(o=>o.isCamera&&o.visible&&o.userData.active)||root.children.find(o=>o.isCamera&&o.visible)}function setupCam(){if(camR)return;camR=new T.WebGLRenderer({canvas:$('#cameraCanvas'),antialias:true,preserveDrawingBuffer:true});camR.setPixelRatio(Math.min(devicePixelRatio,2));camR.shadowMap.enabled=true;camR.toneMapping=T.ACESFilmicToneMapping;camR.outputColorSpace=T.SRGBColorSpace}function resize(){let w=view.clientWidth,h=view.clientHeight;R.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();if(camR){let a=$('#cameraMode');camR.setSize(a.clientWidth,a.clientHeight,false)}}function enterCamera(){let c=active();if(!c)return toast('Add a camera first','warn');setupCam();camMode=true;$('#cameraMode').hidden=false;tc.detach();orbit.enabled=false;aux.visible=false;resize();document.documentElement.requestFullscreen?.().catch(()=>{});toast('Camera View')}function exitCamera(){camMode=false;$('#cameraMode').hidden=true;aux.visible=true;orbit.enabled=true;if(document.fullscreenElement)document.exitFullscreen?.().catch(()=>{})}$('#camera').onclick=enterCamera;$('#camExit').onclick=exitCamera;$('#camPlay').onclick=()=>play=true;$('#camPause').onclick=()=>play=false;$('#camStop').onclick=()=>{play=false;setTime(0)};document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&camMode)exitCamera()});
-function key(){if(!S)return toast('Select an object first','warn');let a=anim.keys[S.uuid]||(anim.keys[S.uuid]=[]),k={t:+time.toFixed(2),p:S.position.toArray(),r:[S.rotation.x,S.rotation.y,S.rotation.z],s:S.scale.toArray()},i=a.findIndex(x=>Math.abs(x.t-k.t)<.01);i<0?a.push(k):a[i]=k;a.sort((x,y)=>x.t-y.t);markers();commit();toast('Keyframe added')}function setTime(v){time=Math.max(0,Math.min(anim.duration,+v));sample();$('#slider').value=time;$('#time').textContent=time.toFixed(2)+'s'}function sample(){for(let id in anim.keys){let o=root.getObjectByProperty('uuid',id),a=anim.keys[id];if(!o||!a.length)continue;let A=a[0],B=a[a.length-1];for(let i=0;i<a.length-1;i++)if(time>=a[i].t&&time<=a[i+1].t){A=a[i];B=a[i+1];break}let f=A===B?0:(time-A.t)/(B.t-A.t),L=(x,y)=>x.map((v,i)=>v+(y[i]-v)*f);o.position.fromArray(L(A.p,B.p));o.rotation.set(...L(A.r,B.r));o.scale.fromArray(L(A.s,B.s))}}function markers(){let k=$('#keys');k.replaceChildren();(S?anim.keys[S.uuid]||[]:[]).forEach(x=>{let i=document.createElement('i');i.className='keym';i.style.left=x.t/anim.duration*100+'%';k.append(i)});$('#slider').max=anim.duration}$('#slider').oninput=e=>setTime(e.target.value);$('#duration').onchange=e=>{anim.duration=Math.max(1,Math.min(120,+e.target.value||5));markers();commit()};$('#key').onclick=key;$('#play').onclick=()=>play=true;$('#pause').onclick=()=>play=false;$('#stop').onclick=()=>{play=false;setTime(0)};$('#prev').onclick=()=>{let a=S?anim.keys[S.uuid]||[]:[],x=a.filter(k=>k.t<time-.01).pop();if(x)setTime(x.t)};$('#next').onclick=()=>{let a=S?anim.keys[S.uuid]||[]:[],x=a.find(k=>k.t>time+.01);if(x)setTime(x.t)};
-function burst(p){let g=new T.Group();for(let i=0;i<16;i++){let m=new T.Mesh(new T.SphereGeometry(.025,6,4),new T.MeshBasicMaterial({color:0xffad4d,transparent:true}));m.userData.v=new T.Vector3((Math.random()-.5)*2,Math.random()*1.5,(Math.random()-.5)*2);g.add(m)}g.position.copy(p);aux.add(g);fx.push({g,t:performance.now()})}function fxloop(n){fx=fx.filter(f=>{let p=Math.min((n-f.t)/650,1);f.g.children.forEach(m=>{m.position.copy(m.userData.v).multiplyScalar(p);m.material.opacity=1-p});if(p>=1){aux.remove(f.g);dispose(f.g);return false}return true})}
-function download(x,n,t){let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([x],{type:t}));a.download=n;a.click()}function save(){download(JSON.stringify({app:'MiniBlender',v:2,name:'MyProject',scene:root.toJSON(),anim,bg:'#'+scene.background.getHexString(),cam:{p:cam.position.toArray(),t:orbit.target.toArray()}},null,2),'MyProject.json','application/json');dirty=false;status();toast('Project saved')}$('#file').onchange=async e=>{let f=e.target.files[0];e.target.value='';if(!f)return;try{let j=JSON.parse(await f.text());restore(JSON.stringify({scene:j.scene,anim:j.anim,bg:j.bg,cam:j.cam}));toast('Project loaded')}catch{toast('Invalid JSON','err')}};
-function menu(){let D={File:[['New',newScene],['Open',()=>$('#file').click()],['Save',save]],Add:[['Cube',()=>add(mesh('Cube'))],['Sphere',()=>add(mesh('Sphere'))],['Cylinder',()=>add(mesh('Cylinder'))],['Cone',()=>add(mesh('Cone'))],['Torus',()=>add(mesh('Torus'))],['Plane',()=>add(mesh('Plane'))],null,['Point Light',()=>add(light())],['Directional Light',()=>add(light('Directional'))],['Ambient Light',()=>add(light('Ambient'))],['Camera',()=>add(camera())]],Edit:[['Undo',undo],['Redo',redo],['Clone',clone],['Delete',del],['Focus',()=>$('#focus').click()]],Camera:[['Camera View',enterCamera],['Play',()=>{play=true;enterCamera()}]],Image:[['Apply PNG',()=>$('#png').click()]],Export:[['GLTF',()=>exportG(false)],['GLB',()=>exportG(true)],['OBJ',exportO]]};for(let n in D){let w=document.createElement('div');w.className='menu';let b=document.createElement('button');b.textContent=n;let d=document.createElement('div');d.className='dd';D[n].forEach(i=>{if(!i)return d.append(document.createElement('hr'));let q=document.createElement('button');q.textContent=i[0];q.onclick=()=>{w.classList.remove('open');i[1]()};d.append(q)});b.onclick=()=>{document.querySelectorAll('.menu').forEach(x=>x.classList.remove('open'));w.classList.add('open');d.style.left=Math.min(b.getBoundingClientRect().left,innerWidth-200)+'px'};w.append(b,d);$('#menus').append(w)}}function exportG(bin){let g=new T.Group();root.children.filter(o=>o.visible&&!o.isLight&&!o.isCamera).forEach(o=>g.add(o.clone()));new GLTFExporter().parse(g,r=>download(bin?r:JSON.stringify(r),'MyProject.'+(bin?'glb':'gltf'),bin?'model/gltf-binary':'model/gltf+json'),()=>toast('Export failed','err'),{binary:bin})}function exportO(){let g=new T.Group();root.children.filter(o=>o.visible&&o.isMesh).forEach(o=>g.add(o.clone()));download(new OBJExporter().parse(g),'MyProject.obj','text/plain')}
-function newScene(){root.clear();anim={duration:5,keys:{}};time=0;let f=mesh('Plane');f.name='Floor';f.scale.setScalar(8);f.material.color.set('#303238');f.material.roughness=.9;let c=mesh('Cube'),k=camera();k.position.set(4,3,6);k.lookAt(0,.5,0);root.add(f,c,light('Ambient'),light('Directional'),light(),k);helpers();select(null);commit();markers()}function help(){let F=['Clone button','Camera renderer terpisah','Fullscreen Camera','Camera animation','Keyframe timeline','Play/Pause/Stop','Previous/Next key','Undo/Redo','Outliner','Hide/Show','Delete','Move/Rotate/Scale','Transform Snap','Grid toggle','Wireframe','Focus selected','Cube/Sphere','Cylinder/Cone','Torus/Plane','Point/Directional/Ambient light','Multiple cameras','Active camera','PNG texture','Material color','Metalness/Roughness','GLTF export','GLB export','OBJ export','JSON save/load','Screenshot-ready renderer','Mobile bottom panel','Smooth UI animation','Selection particle FX','60 FPS indicator'];$('#mt').textContent='Mini Blender Ultra';$('#mb').innerHTML='<p>Editor 3D dengan fitur utama Blender versi ringan.</p><div class="features">'+F.map(x=>'<div><b>'+x+'</b>Ready</div>').join('')+'</div>';$('#modal').hidden=false}$('#help').onclick=help;$('#mx').onclick=()=>$('#modal').hidden=true;
-R.domElement.addEventListener('pointerdown',e=>R.domElement._d=[e.clientX,e.clientY]);R.domElement.addEventListener('pointerup',e=>{let d=R.domElement._d;if(!d||tc.dragging)return;if(Math.hypot(e.clientX-d[0],e.clientY-d[1])>5)return;let q=R.domElement.getBoundingClientRect(),m=new T.Vector2((e.clientX-q.left)/q.width*2-1,-((e.clientY-q.top)/q.height)*2+1);let rc=new T.Raycaster();rc.setFromCamera(m,cam);let h=rc.intersectObjects(root.children.filter(o=>o.visible&&!o.isLight&&!o.isCamera),true)[0],o=h?.object;while(o&&o.parent!==root)o=o.parent;select(o||null)});new ResizeObserver(resize).observe(view);function resize(){let w=view.clientWidth,h=view.clientHeight;R.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();if(camR){let a=$('#cameraMode');camR.setSize(a.clientWidth,a.clientHeight,false)}}let last=performance.now(),fc=0,ft=last;function loop(n){requestAnimationFrame(loop);let dt=Math.min((n-last)/1e3,.08);last=n;if(play){time+=dt;if(time>anim.duration)time=0;setTime(time)}orbit.update();if(S&&box.visible){box.setFromObject(S);box.material.opacity=.6+.35*Math.sin(n/220)}fxloop(n);R.render(scene,cam);if(camMode){let c=active();if(c){c.aspect=$('#cameraMode').clientWidth/Math.max($('#cameraMode').clientHeight,1);c.updateProjectionMatrix();camR.render(scene,c);$('#camName').textContent=c.name;$('#camTime').textContent=time.toFixed(2)+'s';$('#camState').textContent=play?'PLAYING':'LIVE'}}fc++;if(n-ft>700){$('#fps').textContent=Math.round(fc*1000/(n-ft))+' FPS';fc=0;ft=n}}menu();newScene();requestAnimationFrame(loop);window.addEventListener('keydown',e=>{if(/INPUT|TEXTAREA/.test(e.target.tagName))return;let k=e.key.toLowerCase(),c=e.ctrlKey||e.metaKey;if(c&&k==='z')return e.preventDefault(),undo();if(c&&k==='y')return e.preventDefault(),redo();if(c&&k==='s')return e.preventDefault(),save();if(k==='g')tc.setMode('translate');if(k==='r')tc.setMode('rotate');if(k==='s')tc.setMode('scale');if(k==='f')$('#focus').click();if(k==='delete')del();if(k==='escape'&&camMode)exitCamera()});
+import*as T from'three';
+import{OrbitControls}from'three/addons/controls/OrbitControls.js';
+import{TransformControls}from'three/addons/controls/TransformControls.js';
+import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
+import{GLTFExporter}from'three/addons/exporters/GLTFExporter.js';
+import{OBJLoader}from'three/addons/loaders/OBJLoader.js';
+import{OBJExporter}from'three/addons/exporters/OBJExporter.js';
+
+const $=s=>document.querySelector(s),el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
+const ease=p=>1+2.70158*Math.pow(p-1,3)+1.70158*Math.pow(p-1,2);
+const P={name:'MyProject',handle:null,named:false,state:'New Project'};
+let S=null,H=[],hi=-1,saved=null,forceDirty=false,anim={dur:5,keys:{}},tm=0,playing=false,fx=[],moved=false,helpers=[],last=performance.now(),fc=0,ft=last,fps=60;
+let cameraMode=false, cameraSaved={aux:true,tc:true,orbit:true};
+
+/* ---------- Viewport ---------- */
+const vp=$('#vp'),R=new T.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
+R.setPixelRatio(Math.min(devicePixelRatio,2));R.shadowMap.enabled=true;R.shadowMap.type=T.PCFSoftShadowMap;R.toneMapping=T.ACESFilmicToneMapping;R.autoClear=true;
+vp.prepend(R.domElement);
+const scene=new T.Scene(),root=new T.Group(),aux=new T.Group();scene.add(root,aux);scene.background=new T.Color('#25272b');
+const cam=new T.PerspectiveCamera(50,1,.1,500);cam.position.set(6,5,8);
+const orbit=new OrbitControls(cam,R.domElement);orbit.enableDamping=true;orbit.dampingFactor=.08;orbit.target.set(0,.5,0);
+const ax=(v,c)=>new T.Line(new T.BufferGeometry().setFromPoints([v.clone().multiplyScalar(-20),v.clone().multiplyScalar(20)]),new T.LineBasicMaterial({color:c,transparent:true,opacity:.75}));
+aux.add(new T.GridHelper(40,40,0x4a4d55,0x30323a),ax(new T.Vector3(1,0,0),0xe5484d),ax(new T.Vector3(0,1,0),0x46c46a),ax(new T.Vector3(0,0,1),0x4d8df7));
+const tc=new TransformControls(cam,R.domElement);tc.setSize(innerWidth<820?1.4:1);scene.add(tc);
+tc.addEventListener('dragging-changed',e=>{orbit.enabled=!e.value;if(!e.value&&moved){moved=false;commit()}});
+tc.addEventListener('objectChange',()=>{moved=true;syncProps();dirtyMark()});
+const sel=new T.BoxHelper(new T.Object3D(),0xe87d0d);sel.material.transparent=true;sel.material.depthTest=false;sel.visible=false;aux.add(sel);
+R.domElement.style.touchAction='none';
+new ResizeObserver(()=>{const w=vp.clientWidth,h=vp.clientHeight;if(!w||!h)return;R.setSize(w,h);cam.aspect=w/h;cam.updateProjectionMatrix()}).observe(vp);
+
+/* ---------- Helpers: tween, toast, modal ---------- */
+const tween=(d,f,end)=>fx.push({t:performance.now(),d,f,end});
+function toast(m,t='ok'){const d=el('div','toast '+t,m);$('#toasts').append(d);setTimeout(()=>{d.classList.add('out');setTimeout(()=>d.remove(),320)},2600)}
+const ask=(msg,btns,input)=>new Promise(r=>{const d=$('#modal'),b=$('#mb'),i=$('#mi');$('#mm').textContent=msg;i.hidden=input==null;if(input!=null)i.value=input;b.replaceChildren();
+  btns.forEach((t,k)=>{const x=el('button',k?'':'pri',t);x.onclick=()=>{d.classList.remove('on');r({i:k,v:i.value})};b.append(x)});d.classList.add('on');setTimeout(()=>input!=null?i.select():b.firstChild.focus(),60)});
+const dl=(b,n)=>{const a=el('a');a.href=URL.createObjectURL(b);a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000)};
+const clean=s=>s.replace(/[\\/:*?"<>|]+/g,'').trim()||'MyProject';
+const dispose=o=>o.traverse(c=>{c.geometry&&c.geometry.dispose();[].concat(c.material||[]).forEach(m=>m.dispose())});
+const find=id=>root.getObjectByProperty('uuid',id);
+
+/* ---------- Objects ---------- */
+const G={Cube:()=>new T.BoxGeometry(1,1,1),Sphere:()=>new T.SphereGeometry(.6,48,32),Cylinder:()=>new T.CylinderGeometry(.5,.5,1.2,48),Cone:()=>new T.ConeGeometry(.6,1.2,48),Plane:()=>new T.PlaneGeometry(2,2),Torus:()=>new T.TorusGeometry(.6,.22,24,64)};
+const uniq=b=>{let n=b,i=1;while(root.children.some(c=>c.name===n))n=b+'.'+String(i++).padStart(3,'0');return n};
+function mesh(k,name){const m=new T.Mesh(G[k](),new T.MeshStandardMaterial({color:'#b9bdc7',metalness:.1,roughness:.55,side:k=='Plane'?2:0}));m.name=uniq(name||k);m.castShadow=m.receiveShadow=true;if(k=='Plane')m.rotation.x=-Math.PI/2;else m.position.y=.6;return m}
+function light(t){const l=t=='Ambient'?new T.AmbientLight('#ffffff',.5):t=='Directional'?new T.DirectionalLight('#ffffff',2.2):new T.PointLight('#ffd9b0',40,0,2);
+  l.name=uniq(t+' Light');if(t=='Directional'){l.position.set(5,8,4);l.castShadow=true;l.shadow.mapSize.set(1024,1024);Object.assign(l.shadow.camera,{left:-8,right:8,top:8,bottom:-8});l.shadow.camera.updateProjectionMatrix()}else if(t=='Point')l.position.set(-4,3,2);return l}
+function camera(){const c=new T.PerspectiveCamera(45,16/9,.1,100);c.name=uniq('Camera');c.position.copy(cam.position);c.quaternion.copy(cam.quaternion);if(!root.children.some(o=>o.isCamera&&o.userData.active))c.userData.active=true;return c}
+function ring(p){const m=new T.Mesh(new T.RingGeometry(.4,.45,64),new T.MeshBasicMaterial({color:0xe87d0d,transparent:true,depthWrite:false,side:2}));m.rotation.x=-Math.PI/2;m.position.set(p.x,.02,p.z);aux.add(m);
+  tween(750,k=>{m.scale.setScalar(1+k*4);m.material.opacity=.9*(1-k)},()=>{aux.remove(m);m.geometry.dispose();m.material.dispose()})}
+function add(o){root.add(o);rebuild();const s=o.scale.clone();o.scale.multiplyScalar(.001);ring(o.position);
+  tween(450,p=>o.scale.copy(s).multiplyScalar(Math.max(ease(p),.001)),()=>{o.scale.copy(s);commit()});select(o)}
+const addMesh=k=>add(mesh(k));
+function rebuild(){helpers.forEach(h=>{aux.remove(h);h.dispose&&h.dispose()});helpers=[];
+  root.children.forEach(o=>{const h=o.isDirectionalLight?new T.DirectionalLightHelper(o,1.2):o.isPointLight?new T.PointLightHelper(o,.25):o.isCamera?new T.CameraHelper(o):null;if(h){helpers.push(h);aux.add(h)}});rows()}
+function clearRoot(){tc.detach();[...root.children].forEach(c=>{root.remove(c);dispose(c)})}
+function del(){if(!S)return;const o=S;select(null);root.remove(o);dispose(o);delete anim.keys[o.uuid];rebuild();commit()}
+async function clearScene(){if(!root.children.length){toast('Nothing to clear.','warn');return}
+  const r=await ask('Clear the whole scene? Every object will be removed.',['Clear','Cancel']);if(r.i)return;select(null);clearRoot();anim={dur:5,keys:{}};rebuild();commit();toast('Scene cleared.')}
+
+/* ---------- Selection ---------- */
+function select(o){S=o||null;if(S&&S.visible)tc.attach(S);else tc.detach();sel.visible=!!(S&&S.visible&&(S.isMesh||S.isGroup));rows();syncProps();markers()}
+const rc=new T.Raycaster(),m2=new T.Vector2();let dn=null;
+R.domElement.addEventListener('pointerdown',e=>{dn=tc.axis?null:[e.clientX,e.clientY]});
+R.domElement.addEventListener('pointerup',e=>{if(!dn||tc.dragging)return;if(Math.hypot(e.clientX-dn[0],e.clientY-dn[1])>5)return;
+  const b=R.domElement.getBoundingClientRect();m2.set((e.clientX-b.left)/b.width*2-1,-(e.clientY-b.top)/b.height*2+1);rc.setFromCamera(m2,cam);
+  const h=rc.intersectObjects(root.children.filter(o=>o.visible&&!o.isLight&&!o.isCamera),true)[0];let o=h&&h.object;while(o&&o.parent!==root)o=o.parent;select(o||null);dn=null});
+function setMode(m){tc.setMode(m);document.querySelectorAll('#tools [data-m]').forEach(b=>b.classList.toggle('on',b.dataset.m==m))}
+function focus(){if(!S)return;let b=new T.Box3().setFromObject(S);if(b.isEmpty())b.setFromCenterAndSize(S.position,new T.Vector3(1,1,1));
+  const c=b.getCenter(new T.Vector3()),r=Math.max(b.getSize(new T.Vector3()).length(),1),p0=cam.position.clone(),t0=orbit.target.clone(),d=p0.clone().sub(t0).normalize().multiplyScalar(r*1.8);
+  tween(500,k=>{k=1-Math.pow(1-k,3);orbit.target.lerpVectors(t0,c,k);cam.position.lerpVectors(p0,c.clone().add(d),k)})}
+
+/* ---------- Outliner ---------- */
+function rows(){const L=$('#outl');L.replaceChildren(el('h3','','Scene Collection'));
+  root.children.forEach(o=>{const r=el('div','row'+(o===S?' on':'')+(o.visible?'':' off'));
+    const mk=(t,f,ti)=>{const b=el('button','',t);b.title=ti;b.setAttribute('aria-label',ti);b.onclick=e=>{e.stopPropagation();f()};return b};
+    r.append(el('i','ic',o.isLight?'✦':o.isCamera?'▷':'▣'),el('span','nm',o.name),mk('✎',()=>rename(o),'Rename'),
+      mk(o.visible?'◉':'◌',()=>{o.visible=!o.visible;o===S?select(o):rows();commit()},'Show / Hide'),mk('✕',()=>{S=o;del()},'Delete'));
+    r.onclick=()=>select(o);r.ondblclick=()=>rename(o);L.append(r)});
+  $('#info').textContent=root.children.length+' objects · '+fps+' fps'}
+async function rename(o){const r=await ask('Rename object',['OK','Cancel'],o.name);if(!r.i&&r.v.trim()){o.name=r.v.trim();rows();syncProps();commit()}}
+
+/* ---------- Properties ---------- */
+const n3=p=>[0,1,2].map(i=>`<input type="number" step="0.1" data-k="${p}${i}">`).join('');
+const sl=(c,l,k,a,b,s)=>`<label class="r ${c}">${l}<input type="range" min="${a}" max="${b}" step="${s}" data-k="${k}"></label>`;
+$('#props').innerHTML=`<p id="empty">Select an object to edit it.</p><div id="pp" hidden><input class="nm" data-k="nm"><h4>Location</h4><div class="g3">${n3('p')}</div><h4>Rotation (°)</h4><div class="g3">${n3('r')}</div><h4>Scale</h4><div class="g3">${n3('s')}</div>
+<h4 class="ml">Material</h4><label class="r ml">Color<input type="color" data-k="col"></label><label class="r m">Emissive<input type="color" data-k="emi"></label>
+${sl('m','Metalness','met',0,1,.01)}${sl('m','Roughness','rou',0,1,.01)}${sl('m','Opacity','opa',0,1,.01)}${sl('l','Intensity','int',0,10,.05)}${sl('c','FOV','fov',15,120,1)}<button class="c" id="act">Set as active camera</button></div>
+<h4>World</h4><label class="r">Background<input type="color" data-k="bg" value="#25272b"></label>`;
+const pr=$('#props');
+pr.addEventListener('input',e=>{const k=e.target.dataset.k,v=e.target.value;if(!k)return;if(k=='bg'){scene.background.set(v);dirtyMark();return}
+  const o=S;if(!o||v==='')return;const f=+v,q=/^([prs])([012])$/.exec(k);
+  if(q){const i=+q[2];if(q[1]=='p')o.position.setComponent(i,f);else if(q[1]=='r')o.rotation['xyz'[i]]=f*Math.PI/180;else o.scale.setComponent(i,f)}
+  else if(k=='nm'){o.name=v;rows()}else if(k=='col')(o.material||o).color.set(v);else if(k=='emi'&&o.material.emissive)o.material.emissive.set(v);
+  else if(k=='met')o.material.metalness=f;else if(k=='rou')o.material.roughness=f;else if(k=='opa'){o.material.opacity=f;o.material.transparent=f<1}
+  else if(k=='int')o.intensity=f;else if(k=='fov'){o.fov=f;o.updateProjectionMatrix()}dirtyMark()});
+pr.addEventListener('change',()=>commit());
+$('#act').onclick=()=>{if(!S||!S.isCamera)return;root.children.forEach(o=>{if(o.isCamera)o.userData.active=false});S.userData.active=true;commit();toast('Active camera set.')};
+function syncProps(){const pp=$('#pp'),o=S;$('#empty').hidden=!!o;pp.hidden=!o;if(!o)return;pp.dataset.t=o.isMesh?'mesh':o.isLight?'light':o.isCamera?'cam':'grp';
+  const set=(k,v)=>{const i=pp.querySelector(`[data-k="${k}"]`);if(i&&document.activeElement!==i)i.value=v},m=o.material,r=[o.rotation.x,o.rotation.y,o.rotation.z];
+  [0,1,2].forEach(i=>{set('p'+i,+o.position.getComponent(i).toFixed(3));set('r'+i,+(r[i]*180/Math.PI).toFixed(2));set('s'+i,+o.scale.getComponent(i).toFixed(3))});set('nm',o.name);
+  if(m&&m.color){set('col','#'+m.color.getHexString());if(m.emissive)set('emi','#'+m.emissive.getHexString());set('met',m.metalness??0);set('rou',m.roughness??1);set('opa',m.opacity)}
+  if(o.isLight){set('col','#'+o.color.getHexString());set('int',o.intensity)}if(o.isCamera)set('fov',o.fov)}
+
+/* ---------- History / project state ---------- */
+const snap=()=>JSON.stringify({s:root.toJSON(),a:anim,sel:S&&S.uuid});
+const isDirty=()=>forceDirty||H[hi]!==saved;
+function refresh(){const d=isDirty();document.title=P.name+(d?'*':'')+' — Mini Blender';$('#ptitle').textContent=P.name+(d?' ●':'');$('#st').textContent=d?'Unsaved Changes':P.state;$('#stat').classList.toggle('dirty',d)}
+function commit(){forceDirty=false;const s=snap();if(H[hi]!==s){H=H.slice(0,hi+1);H.push(s);if(H.length>80)H.shift();hi=H.length-1}refresh()}
+const dirtyMark=()=>{forceDirty=true;refresh()};
+function restore(s){const o=JSON.parse(s),g=new T.ObjectLoader().parse(o.s);clearRoot();[...g.children].forEach(c=>root.add(c));anim=o.a;rebuild();select(o.sel&&find(o.sel));forceDirty=false;refresh()}
+const undo=()=>{if(hi>0){hi--;restore(H[hi])}else toast('Nothing to undo.','warn')};
+const redo=()=>{if(hi<H.length-1){hi++;restore(H[hi])}else toast('Nothing to redo.','warn')};
+
+/* ---------- Project: new / save / open ---------- */
+function reset(){clearRoot();anim={dur:5,keys:{}};tm=0;Object.assign(P,{name:'MyProject',handle:null,named:false,state:'New Project'});scene.background.set('#25272b');
+  const fl=mesh('Plane','Floor');fl.scale.setScalar(8);fl.material.color.set('#2f3237');fl.material.roughness=.9;
+  const cb=mesh('Cube'),c=camera();c.position.set(4,3,6);c.lookAt(0,.5,0);root.add(fl,cb,light('Ambient'),light('Directional'),light('Point'),c);
+  H=[];hi=-1;rebuild();select(null);commit();saved=H[0];refresh();markers()}
+async function guard(msg){if(!isDirty())return true;const r=await ask(msg,['Save',"Don't Save",'Cancel']);if(r.i==2)return false;if(r.i==0){await save();if(isDirty())return false}return true}
+async function newProj(){if(await guard('You have unsaved changes. Save before creating a new project?')){reset();try{localStorage.removeItem('mb_recover')}catch{}toast('New project created.')}}
+const pack=()=>JSON.stringify({app:'MiniBlender',v:1,name:P.name,scene:root.toJSON(),anim,bg:'#'+scene.background.getHexString(),cam:{p:cam.position.toArray(),t:orbit.target.toArray(),fov:cam.fov}});
+const recents=()=>{try{return JSON.parse(localStorage.getItem('mb_recent'))||[]}catch{return[]}};
+function addRecent(name,data){const l=recents().filter(r=>r.name!==name);l.unshift({name,time:Date.now(),data});l.length=Math.min(l.length,5);
+  try{localStorage.setItem('mb_recent',JSON.stringify(l))}catch{try{localStorage.setItem('mb_recent',JSON.stringify(l.map(r=>({name:r.name,time:r.time}))))}catch{}}}
+async function save(as){if(!root.children.length){toast('Nothing to save.','warn');return}
+  try{if(window.showSaveFilePicker&&(as||!P.handle)){P.handle=await showSaveFilePicker({suggestedName:P.name+'.json',types:[{description:'Mini Blender project',accept:{'application/json':['.json']}}]});P.name=clean(P.handle.name.replace(/\.json$/i,''))}
+    else if(!window.showSaveFilePicker&&(as||!P.named)){const r=await ask('Save project as',['Save','Cancel'],P.name);if(r.i)return;P.name=clean(r.v)}
+    $('#st').textContent='Saving...';const data=pack();
+    if(P.handle){const w=await P.handle.createWritable();await w.write(data);await w.close()}else dl(new Blob([data],{type:'application/json'}),P.name+'.json');
+    P.named=true;P.state='Saved';saved=H[hi];forceDirty=false;addRecent(P.name,data);try{localStorage.removeItem('mb_recover')}catch{}refresh();toast('Project saved successfully.')
+  }catch(e){refresh();if(e&&e.name!=='AbortError')toast('Failed to save project.','err')}}
+function loadProject(j,name){const g=new T.ObjectLoader().parse(j.scene);clearRoot();[...g.children].forEach(c=>root.add(c));anim=j.anim||{dur:5,keys:{}};tm=0;
+  if(j.bg)scene.background.set(j.bg);if(j.cam){cam.position.fromArray(j.cam.p);orbit.target.fromArray(j.cam.t);cam.fov=j.cam.fov||50;cam.updateProjectionMatrix()}
+  Object.assign(P,{name:clean(name||j.name||'Project'),handle:null,named:true,state:'Loaded'});H=[];hi=-1;rebuild();select(null);commit();saved=H[0];refresh();markers()}
+function parseProject(txt){let j;try{j=JSON.parse(txt)}catch{throw'The file is not valid JSON.'}if(!j||j.app!=='MiniBlender'||!j.scene||!j.scene.object)throw'Unsupported file format.';return j}
+async function openFile(f,txt,quiet){$('#st').textContent='Loading...';try{const raw=txt??await f.text(),j=parseProject(raw);loadProject(j,f?f.name.replace(/\.json$/i,''):j.name);addRecent(P.name,raw);toast('Project loaded successfully.')}
+  catch(e){refresh();toast(typeof e=='string'?e:'Failed to load project.','err')}}
+const file=$('#file');
+function pickFile(acc,fn){file.accept=acc;file.onchange=()=>{const f=file.files[0];file.value='';f&&fn(f)};file.click()}
+async function openDlg(){if(await guard('You have unsaved changes. Save before opening another project?'))pickFile('.json,application/json',f=>openFile(f))}
+
+/* ---------- Import / Export ---------- */
+async function importFile(f){const ext=f.name.split('.').pop().toLowerCase(),nm=f.name.replace(/\.[^.]+$/,'');$('#st').textContent='Loading...';
+  try{let items;
+    if(ext=='glb'||ext=='gltf')items=[(await new GLTFLoader().parseAsync(ext=='glb'?await f.arrayBuffer():await f.text(),'')).scene];
+    else if(ext=='obj')items=[new OBJLoader().parse(await f.text())];
+    else if(ext=='json'){let j;try{j=JSON.parse(await f.text())}catch{throw'The file is not valid JSON.'}const sj=j&&j.scene&&j.scene.object?j.scene:j&&j.object?j:null;if(!sj)throw'Unsupported file format.';
+      const o=new T.ObjectLoader().parse(sj);items=o.type=='Group'||o.type=='Scene'?[...o.children]:[o]}
+    else throw'Unsupported file format.';
+    items.forEach((o,i)=>{if(ext!='json'){o.name=uniq(nm);const sz=new T.Box3().setFromObject(o).getSize(new T.Vector3()).length();if(sz>12||(sz>0&&sz<.2))o.scale.setScalar(4/sz);o.traverse(c=>{if(c.isMesh)c.castShadow=c.receiveShadow=true})}else o.name=uniq(o.name||'Object');root.add(o);ring(o.position)});
+    rebuild();select(items[items.length-1]);commit();toast('Import completed.')}
+  catch(e){refresh();toast(typeof e=='string'?e:'Failed to import file.','err')}}
+function expGroup(){const g=new T.Group();root.children.filter(o=>o.visible&&(o.isMesh||o.isGroup)).forEach(o=>g.add(o.clone()));g.updateMatrixWorld(true);return g}
+async function exportAs(t){const g=expGroup();if(!g.children.length){toast('Nothing to export.','warn');return}
+  try{const n=P.name;if(t=='obj')dl(new Blob([new OBJExporter().parse(g)],{type:'text/plain'}),n+'.obj');else if(t=='json')dl(new Blob([pack()],{type:'application/json'}),n+'.json');
+    else{const r=await new Promise((ok,no)=>new GLTFExporter().parse(g,ok,no,{binary:t=='glb'}));dl(t=='glb'?new Blob([r],{type:'model/gltf-binary'}):new Blob([JSON.stringify(r)],{type:'model/gltf+json'}),n+'.'+t)}
+    toast('Export completed.')}catch(e){toast('Export failed.','err')}}
+function shot(){const v=[aux.visible,tc.visible];aux.visible=tc.visible=false;R.setScissorTest(false);R.setViewport(0,0,vp.clientWidth,vp.clientHeight);R.render(scene,cam);
+  R.domElement.toBlob(b=>{dl(b,P.name+'.png');toast('Export completed.')});aux.visible=v[0];tc.visible=v[1]}
+
+/* ---------- Animation ---------- */
+function sample(){for(const id in anim.keys){const o=find(id),k=anim.keys[id];if(!o||!k.length)continue;let a=k[0],b=a;
+  if(tm>=k[k.length-1].t)a=b=k[k.length-1];else for(let i=0;i<k.length-1;i++)if(tm>=k[i].t&&tm<k[i+1].t){a=k[i];b=k[i+1];break}
+  const f=a===b?0:(tm-a.t)/(b.t-a.t),L=(x,y)=>x.map((v,i)=>v+(y[i]-v)*f);o.position.fromArray(L(a.p,b.p));o.rotation.set(...L(a.r,b.r));o.scale.fromArray(L(a.s,b.s))}}
+function ui(){$('#tr').value=tm;$('#tt').textContent=tm.toFixed(2)+'s';if(S)syncProps()}
+function markers(){const tr=$('#tr'),k=$('#kfs');tr.max=anim.dur;$('#dur').value=anim.dur;k.replaceChildren();
+  ((S&&anim.keys[S.uuid])||[]).forEach(x=>{const i=el('i');i.style.left=(x.t/anim.dur*100)+'%';k.append(i)})}
+function addKey(){if(!S){toast('Select an object first.','warn');return}const k=anim.keys[S.uuid]||(anim.keys[S.uuid]=[]),t=+tm.toFixed(2),n={t,p:S.position.toArray(),r:[S.rotation.x,S.rotation.y,S.rotation.z],s:S.scale.toArray()},i=k.findIndex(x=>Math.abs(x.t-t)<.01);
+  i<0?k.push(n):k[i]=n;k.sort((a,b)=>a.t-b.t);markers();commit();toast('Keyframe added.')}
+$('#tr').oninput=e=>{tm=+e.target.value;sample();ui()};
+$('#dur').onchange=e=>{anim.dur=Math.min(60,Math.max(1,+e.target.value||5));tm=Math.min(tm,anim.dur);markers();ui()};
+$('#tl').onclick=e=>{const a=e.target.dataset.t;if(a=='key')addKey();else if(a=='play'){if(tm>=anim.dur)tm=0;playing=true}else if(a=='pause')playing=false;else if(a=='stop'){playing=false;tm=0;sample();ui()}};
+
+/* ---------- Extra tools: Clone / Camera Mode / Help / Texture ---------- */
+function cloneSelected(){
+  if(!S){toast('Select an object first.','warn');return}
+  const c=S.clone(true);c.name=uniq(S.name+'_Copy');c.position.copy(S.position).add(new T.Vector3(.7,.25,.7));
+  if(S.isMesh&&S.material)c.material=S.material.clone();
+  root.add(c);rebuild();select(c);ring(c.position);commit();toast('Object cloned.');
+}
+function activeCamera(){return root.children.find(o=>o.isCamera&&o.userData.active&&o.visible)||root.children.find(o=>o.isCamera&&o.visible)||null}
+function enterCameraMode(){
+  const c=activeCamera();if(!c){toast('Add a camera first.','warn');return}
+  cameraMode=true;cameraSaved={aux:aux.visible,tc:tc.visible,orbit:orbit.enabled};
+  aux.visible=false;tc.visible=false;orbit.enabled=false;document.body.classList.add('camera-mode');
+  const b=$('#cameraModeBtn');if(b)b.textContent='✕ Exit Camera';
+  toast('Camera Mode — animation follows the active camera.');
+}
+function exitCameraMode(){
+  cameraMode=false;aux.visible=cameraSaved.aux;tc.visible=cameraSaved.tc;orbit.enabled=cameraSaved.orbit;document.body.classList.remove('camera-mode');
+  const b=$('#cameraModeBtn');if(b)b.textContent='▣ Camera';
+}
+function toggleCameraMode(){cameraMode?exitCameraMode():enterCameraMode()}
+function showHelp(){
+  const d=$('#modal'),b=$('#mb'),i=$('#mi');$('#mm').textContent='Mini Blender Help';i.hidden=true;
+  b.replaceChildren();const x=el('button','pri','Close');x.onclick=()=>d.classList.remove('on');b.append(x);d.classList.add('on');
+  const box=d.querySelector('.box');let old=box.querySelector('.helpText');if(old)old.remove();
+  const h=el('div','helpText');h.innerHTML='<b>Core</b><br>G Move · R Rotate · S Scale · F Focus · Delete Remove<br><br><b>Scene</b><br>Add primitives/lights/cameras, rename, hide/show, clone, undo/redo, save/load, recent projects.<br><br><b>Animation</b><br>◆ Key records position, rotation and scale. ▶ plays. ❚❚ pauses. ■ resets.<br><br><b>Camera</b><br>Set a camera active, then Camera opens a fullscreen camera view. The active camera follows its keyframes during playback.<br><br><b>Files</b><br>Import/export GLTF, GLB, OBJ and JSON. Screenshot exports PNG.<br><br><b>Material</b><br>Edit color, emissive, metalness, roughness and opacity. Texture uploads can be applied to selected meshes.';box.insertBefore(h,b);
+}
+const texInput=el('input');texInput.type='file';texInput.accept='image/png,image/jpeg,image/webp';texInput.hidden=true;document.body.append(texInput);
+function uploadTexture(){if(!S||!S.isMesh){toast('Select a mesh first.','warn');return}texInput.value='';texInput.click()}
+texInput.onchange=()=>{const f=texInput.files[0];if(!f||!S||!S.isMesh)return;const u=URL.createObjectURL(f);new T.TextureLoader().load(u,t=>{t.colorSpace=T.SRGBColorSpace;t.wrapS=t.wrapT=T.RepeatWrapping;S.material.map=t;S.material.needsUpdate=true;S.userData.textureName=f.name;dirtyMark();commit();URL.revokeObjectURL(u);toast('Texture applied.')})}
+function removeTexture(){if(!S||!S.isMesh||!S.material||!S.material.map){toast('Selected mesh has no texture.','warn');return}S.material.map.dispose();S.material.map=null;S.material.needsUpdate=true;delete S.userData.textureName;commit();toast('Texture removed.')}
+function addExtraButton(id,text,title,fn){const b=el('button','extraBtn',text);b.id=id;b.title=title;b.onclick=fn;$('#tools').append(b);return b}
+
+/* ---------- Menus & toolbar ---------- */
+const M={
+  File:()=>[['New',newProj,'Ctrl+N'],['Open…',openDlg,'Ctrl+O'],['Save',()=>save(),'Ctrl+S'],['Save As…',()=>save(true),'Ctrl+Shift+S']],
+  Add:()=>[...Object.keys(G).map(k=>[k,()=>addMesh(k)]),0,['Point Light',()=>add(light('Point'))],['Directional Light',()=>add(light('Directional'))],['Ambient Light',()=>add(light('Ambient'))],0,['Camera',()=>add(camera())]],
+  Edit:()=>[['Undo',undo,'Ctrl+Z'],['Redo',redo,'Ctrl+Y'],0,['Focus',focus,'F'],['Delete',del,'Del'],0,['Clear Scene',clearScene]],
+  Import:()=>[['GLTF',()=>pickFile('.gltf',importFile)],['GLB',()=>pickFile('.glb',importFile)],['OBJ',()=>pickFile('.obj',importFile)],['JSON Scene',()=>pickFile('.json,application/json',importFile)]],
+  Export:()=>[['GLTF',()=>exportAs('gltf')],['GLB',()=>exportAs('glb')],['OBJ',()=>exportAs('obj')],['JSON',()=>exportAs('json')],['Screenshot PNG',shot]],
+  Recent:()=>{const l=recents();return l.length?l.map(r=>[r.name+'  ·  '+new Date(r.time).toLocaleString([],{dateStyle:'short',timeStyle:'short'}),async()=>{if(!await guard('You have unsaved changes. Save before opening another project?'))return;
+    if(r.data)openFile(null,r.data);else toast('Project data is no longer available.','warn')}]):[['No recent projects',()=>{}]]}};
+const closeM=()=>document.querySelectorAll('.mn.on').forEach(m=>m.classList.remove('on'));
+Object.keys(M).forEach(n=>{const w=el('div','mn'),b=el('button','',n),d=el('div','dd');
+  b.onclick=()=>{const was=w.classList.contains('on');closeM();if(was)return;d.replaceChildren();M[n]().forEach(i=>{if(!i){d.append(el('hr'));return}const x=el('button','',i[0]);if(i[2])x.append(el('kbd','',i[2]));x.onclick=()=>{closeM();i[1]()};d.append(x)});
+    d.style.left=Math.max(4,Math.min(b.getBoundingClientRect().left,innerWidth-230))+'px';w.classList.add('on')};
+  w.append(b,d);$('#menus').append(w)});
+addEventListener('pointerdown',e=>{if(!e.target.closest('.mn'))closeM()});
+[['translate','✥','Move (G)'],['rotate','↻','Rotate (R)'],['scale','⤢','Scale (S)']].forEach(([m,t,ti])=>{const b=el('button','',t);b.dataset.m=m;b.title=ti;b.setAttribute('aria-label',ti);b.onclick=()=>setMode(m);$('#tools').append(b)});
+$('#tools').append(el('hr'));
+[['◎','Focus (F)',focus],['↶','Undo (Ctrl+Z)',undo],['↷','Redo (Ctrl+Y)',redo],['🗑','Delete',del]].forEach(([t,ti,f])=>{const b=el('button','',t);b.title=ti;b.setAttribute('aria-label',ti);b.onclick=f;$('#tools').append(b)});
+addExtraButton('cloneBtn','⧉','Clone selected object',cloneSelected);
+addExtraButton('cameraModeBtn','▣ Camera','Fullscreen active camera',toggleCameraMode);
+addExtraButton('textureBtn','▤ Texture','Upload PNG/JPG/WebP texture',uploadTexture);
+addExtraButton('removeTextureBtn','⊘ Texture','Remove texture from selected mesh',removeTexture);
+addExtraButton('helpBtn','?','Help / shortcuts / features',showHelp);
+$('#ptog').onclick=()=>document.body.classList.toggle('sheet');
+
+/* ---------- Keyboard ---------- */
+addEventListener('keydown',e=>{const m=$('#modal');
+  if(m.classList.contains('on')){if(e.key=='Escape'){e.preventDefault();$('#mb').lastChild.click()}else if(e.key=='Enter'&&e.target.id=='mi'){e.preventDefault();$('#mb').firstChild.click()}return}
+  const k=e.key.toLowerCase(),c=e.ctrlKey||e.metaKey,inF=/INPUT|TEXTAREA/.test(e.target.tagName)&&e.target.type!='range';
+  if(c){if(k=='s'){e.preventDefault();save(e.shiftKey)}else if(k=='o'){e.preventDefault();openDlg()}else if(k=='n'){e.preventDefault();newProj()}
+    else if(!inF&&k=='z'){e.preventDefault();e.shiftKey?redo():undo()}else if(!inF&&k=='y'){e.preventDefault();redo()}return}
+  if(inF)return;if(e.key=='Escape'&&cameraMode){exitCameraMode();return}if(k=='g')setMode('translate');else if(k=='r')setMode('rotate');else if(k=='s')setMode('scale');else if(k=='f')focus();else if(k=='delete'||k=='backspace')del()});
+
+/* ---------- Autosave & errors ---------- */
+const stash=()=>{if(isDirty()&&root.children.length){try{localStorage.setItem('mb_recover',pack())}catch{}}};
+setInterval(stash,60000);
+addEventListener('beforeunload',e=>{if(isDirty()){stash();e.preventDefault();e.returnValue=''}});
+addEventListener('error',()=>toast('Something went wrong.','err'));
+addEventListener('unhandledrejection',()=>toast('Something went wrong.','err'));
+
+/* ---------- Render loop ---------- */
+function draw(){const w=vp.clientWidth,h=vp.clientHeight;R.setScissorTest(false);R.setViewport(0,0,w,h);
+  if(cameraMode){const ac=activeCamera();if(ac){ac.aspect=w/h;ac.updateProjectionMatrix();R.render(scene,ac)}return}
+  R.render(scene,cam);
+  const ac=root.children.find(o=>o.isCamera&&o.userData.active&&o.visible),pv=$('#pv');pv.style.display=ac?'block':'none';
+  if(ac){const pw=innerWidth<820?132:200,ph=Math.round(pw*9/16),tv=tc.visible;ac.aspect=pw/ph;ac.updateProjectionMatrix();aux.visible=tc.visible=false;
+    R.setScissorTest(true);R.setViewport(12,12,pw,ph);R.setScissor(12,12,pw,ph);R.render(scene,ac);R.setScissorTest(false);aux.visible=true;tc.visible=tv}}
+function loop(now){requestAnimationFrame(loop);const dt=Math.min((now-last)/1e3,.1);last=now;
+  fx=fx.filter(a=>{const p=Math.min((now-a.t)/a.d,1);a.f(p);if(p>=1){a.end&&a.end();return false}return true});
+  if(playing){tm+=dt;if(tm>anim.dur)tm=0;sample();ui()}
+  orbit.update();if(S&&sel.visible){sel.setFromObject(S);sel.material.opacity=.7+.3*Math.sin(now/260)}
+  helpers.forEach(h=>{h.update&&h.update();h.visible=(h.light||h.camera).visible});
+  fc++;if(now-ft>500){fps=Math.round(fc*1000/(now-ft));fc=0;ft=now;$('#info').textContent=root.children.length+' objects · '+fps+' fps'}
+  draw()}
+
+setMode('translate');reset();requestAnimationFrame(loop);
+try{const rec=localStorage.getItem('mb_recover');if(rec)ask('A recovery version of your project was found.',['Recover','Discard']).then(r=>{
+  if(!r.i){try{loadProject(parseProject(rec));saved=null;refresh();toast('Project recovered.')}catch(e){toast('Failed to load project.','err')}}try{localStorage.removeItem('mb_recover')}catch{}})}catch{}
