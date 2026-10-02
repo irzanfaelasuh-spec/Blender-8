@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>MyProject — Mini Blender</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+</head>
+<body>
+<header id="top"><b id="logo">◈ Mini Blender</b><nav id="menus"></nav><span id="ptitle"></span><button id="helpBtn" aria-label="Help">?</button><button id="ptog" aria-label="Panels">☰</button></header>
+<aside id="tools"></aside>
+<main id="vp"><div id="pv"><span>Camera</span><button id="camPreviewBtn" title="Enter Camera Mode">⛶</button></div><div id="hint">G Move · R Rotate · S Scale · F Focus · Shift+D Clone</div>
+<div id="cameraMode" hidden><div class="cameraTop"><span class="cameraBadge">● CAMERA</span><span id="cameraName">Active Camera</span><span id="cameraTime">0.00s</span></div><button id="cameraExit" class="cameraExit" aria-label="Exit Camera Mode">×</button><div class="cameraBottom"><span>Animation follows active camera</span><span id="cameraStatus">LIVE</span></div></div></main>
+<aside id="side"><section id="outl"></section><section id="props"></section></aside>
+<footer id="tl">
+  <div class="bar"><button data-t="key">◆ Key</button><button data-t="play">▶</button><button data-t="pause">❚❚</button><button data-t="stop">■</button><span id="tt">0.00s</span><label>Length <input id="dur" type="number" min="1" max="60" value="5"></label></div>
+  <div class="trk"><div id="kfs"></div><input id="tr" type="range" min="0" max="5" step="0.01" value="0"></div>
+</footer>
+<div id="stat"><i id="dot"></i><span id="st">New Project</span><span id="info"></span></div>
+<div id="toasts"></div>
+<div id="modal"><div class="box"><p id="mm"></p><input id="mi"><div id="mb"></div></div></div>
+<input type="file" id="file" hidden><input type="file" id="imageFile" accept="image/png" hidden>
+<script type="module" src="script.js"></script>
+</body>
+</html>
